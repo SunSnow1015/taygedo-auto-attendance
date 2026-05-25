@@ -70,13 +70,7 @@ phone=你的手机号
 
 其他输入先留空。
 
-运行后打开这次 workflow 的日志，在 `发送验证码` 步骤里找到类似：
-
-```text
-验证码已发送，deviceId: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-把这个 `deviceId` 复制下来。第二步登录必须复用同一个 `deviceId`。
+工作流会自动生成 `deviceId`，并写入 `TAYGEDO_LOGIN_DEVICE_ID` Secret。第二步登录会直接读取这个 Secret，不需要手动复制。
 
 ### 6. 用验证码登录
 
@@ -88,7 +82,6 @@ phone=你的手机号
 mode=login
 phone=你的手机号
 captcha=短信验证码
-device_id=上一步日志里的 deviceId
 account_id=main
 account_name=主账号
 ```
@@ -141,6 +134,7 @@ account_name=小号
 |------------|------|---------|
 | `GH_SECRET_UPDATE_TOKEN` | 用于写回 `TAYGEDO_ACCOUNTS` 的 GitHub PAT | 必填 |
 | `TAYGEDO_ACCOUNTS` | 塔吉多账号 JSON，推荐用登录工作流自动生成 | 登录后自动生成 |
+| `TAYGEDO_LOGIN_DEVICE_ID` | 登录验证码使用的 deviceId，由登录工作流自动写入 | 自动生成 |
 | `TAYGEDO_NOTIFICATION_URLS` | 通知 URL，多个 URL 用英文逗号分隔 | 可选 |
 | `TAYGEDO_SERVERCHAN_SENDKEY` | Server 酱 SendKey，配置后会推送签到结果 | 可选 |
 | `TAYGEDO_MAX_RETRIES` | 单账号最大重试次数，默认 `3` | 可选 |
@@ -200,7 +194,6 @@ account_name=小号
 | `mode` | `send-code` 或 `login` |
 | `phone` | 手机号 |
 | `captcha` | 短信验证码，仅 `login` 需要 |
-| `device_id` | 两步登录共用的 `deviceId` |
 | `account_id` | 账号唯一标识，仅 `login` 需要 |
 | `account_name` | 账号显示名，仅 `login` 需要 |
 
@@ -271,7 +264,7 @@ account_name=主账号
 
 ### deviceId 是什么？
 
-`deviceId` 是本次登录使用的设备标识。发送验证码和提交验证码必须使用同一个 `deviceId`，所以要从第一次运行日志里复制到第二次运行输入里。
+`deviceId` 是本次登录使用的设备标识。发送验证码和提交验证码必须使用同一个 `deviceId`。登录工作流会在发送验证码后自动保存到 `TAYGEDO_LOGIN_DEVICE_ID` Secret，提交验证码时自动读取。
 
 ### refreshToken 失效怎么办？
 

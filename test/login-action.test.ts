@@ -103,4 +103,27 @@ describe('runLoginAction', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('requires a stored device id when logging in with a captcha', async () => {
+    const api = {
+      sendCaptcha: vi.fn(),
+      checkCaptcha: vi.fn(),
+      loginWithCaptcha: vi.fn(),
+      userCenterLogin: vi.fn(),
+      getBindRole: vi.fn(),
+    }
+
+    await expect(runLoginAction({
+      env: {
+        TAYGEDO_LOGIN_MODE: 'login',
+        TAYGEDO_LOGIN_PHONE: '13800138000',
+        TAYGEDO_LOGIN_CAPTCHA: '123456',
+        TAYGEDO_LOGIN_ACCOUNT_ID: 'main',
+      },
+      api,
+      generateDeviceId: () => 'unexpected-device',
+    })).rejects.toThrow('Missing required env TAYGEDO_LOGIN_DEVICE_ID')
+
+    expect(api.checkCaptcha).not.toHaveBeenCalled()
+  })
 })

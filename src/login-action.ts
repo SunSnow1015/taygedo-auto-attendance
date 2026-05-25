@@ -16,10 +16,10 @@ export async function runLoginAction(deps: LoginActionDependencies = {}): Promis
   const mode = requireEnv(env, 'TAYGEDO_LOGIN_MODE')
   const phone = requireEnv(env, 'TAYGEDO_LOGIN_PHONE')
   const api = deps.api ?? new TaygedoApi()
-  const deviceId = optionalEnv(env, 'TAYGEDO_LOGIN_DEVICE_ID') ?? deps.generateDeviceId?.() ?? generateDeviceId()
   const accountsPath = env.TAYGEDO_LOGIN_UPDATED_ACCOUNTS_PATH ?? env.TAYGEDO_UPDATED_ACCOUNTS_PATH ?? 'updated-accounts.json'
 
   if (mode === 'send-code') {
+    const deviceId = optionalEnv(env, 'TAYGEDO_LOGIN_DEVICE_ID') ?? deps.generateDeviceId?.() ?? generateDeviceId()
     await api.sendCaptcha(phone, deviceId)
     const devicePath = env.TAYGEDO_LOGIN_DEVICE_ID_PATH
     if (devicePath) {
@@ -33,6 +33,7 @@ export async function runLoginAction(deps: LoginActionDependencies = {}): Promis
     throw new Error('TAYGEDO_LOGIN_MODE must be send-code or login')
   }
 
+  const deviceId = requireEnv(env, 'TAYGEDO_LOGIN_DEVICE_ID')
   const captcha = requireEnv(env, 'TAYGEDO_LOGIN_CAPTCHA')
   const accountId = requireEnv(env, 'TAYGEDO_LOGIN_ACCOUNT_ID')
   const accountName = optionalEnv(env, 'TAYGEDO_LOGIN_ACCOUNT_NAME') ?? accountId

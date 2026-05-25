@@ -19,9 +19,6 @@ on:
       captcha:
         description: '短信验证码'
         required: false
-      device_id:
-        description: '两步登录共用的 deviceId'
-        required: false
 
 jobs:
   login:
@@ -49,9 +46,14 @@ jobs:
         env:
           TAYGEDO_LOGIN_MODE: send-code
           TAYGEDO_LOGIN_PHONE: ${{ inputs.phone }}
-          TAYGEDO_LOGIN_DEVICE_ID: ${{ inputs.device_id }}
           TAYGEDO_LOGIN_DEVICE_ID_PATH: device-id.txt
         run: pnpm tsx src/login-action.ts
+
+      - name: 保存登录 deviceId
+        if: inputs.mode == 'send-code' && hashFiles('device-id.txt') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_SECRET_UPDATE_TOKEN }}
+        run: gh secret set TAYGEDO_LOGIN_DEVICE_ID < device-id.txt
 
       - name: 登录并写回账号
         if: inputs.mode == 'login'
@@ -59,7 +61,7 @@ jobs:
           TAYGEDO_LOGIN_MODE: login
           TAYGEDO_LOGIN_PHONE: ${{ inputs.phone }}
           TAYGEDO_LOGIN_CAPTCHA: ${{ inputs.captcha }}
-          TAYGEDO_LOGIN_DEVICE_ID: ${{ inputs.device_id }}
+          TAYGEDO_LOGIN_DEVICE_ID: ${{ secrets.TAYGEDO_LOGIN_DEVICE_ID }}
           TAYGEDO_LOGIN_ACCOUNT_ID: ${{ inputs.account_id }}
           TAYGEDO_LOGIN_ACCOUNT_NAME: ${{ inputs.account_name }}
           TAYGEDO_ACCOUNTS: ${{ secrets.TAYGEDO_ACCOUNTS }}
