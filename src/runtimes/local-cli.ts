@@ -9,7 +9,7 @@ interface LocalCliDependencies {
 }
 
 interface LocalCliService {
-  runAttendance(options: { accountsFile: string, stateDir?: string }): Promise<unknown>
+  runAttendance(options: { accountsFile: string, stateDir?: string, forceRun?: boolean }): Promise<unknown>
   runLogin(options: LoginServiceRunOptions): Promise<unknown>
   sendLoginCode(options: LoginServiceRunOptions): Promise<unknown>
 }
@@ -24,6 +24,7 @@ export async function runLocalCli(argv = process.argv.slice(2), deps: LocalCliDe
     await service.runAttendance({
       accountsFile: accountsFile ?? '',
       stateDir: options['state-dir'],
+      forceRun: options.force === 'true' || options.force === '1' || options.force === '',
     })
     return
   }
@@ -66,6 +67,7 @@ function createDefaultService(): LocalCliService {
         credentialKey,
         notificationUrls: config.notificationUrls,
         maxRetries: config.maxRetries,
+        forceRun: options.forceRun ?? config.forceRun,
       }).run()
     },
     async runLogin(options) {
@@ -91,7 +93,12 @@ function parseArgs(args: string[]): Record<string, string | undefined> {
     if (!arg?.startsWith('--')) {
       continue
     }
-    parsed[arg.slice(2)] = args[index + 1]
+    const next = args[index + 1]
+    if (!next || next.startsWith('--')) {
+      parsed[arg.slice(2)] = ''
+      continue
+    }
+    parsed[arg.slice(2)] = next
     index++
   }
   return parsed

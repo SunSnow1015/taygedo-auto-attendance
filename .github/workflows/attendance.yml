@@ -2,6 +2,12 @@ name: 塔吉多签到
 
 on:
   workflow_dispatch:
+    inputs:
+      force_run:
+        description: '忽略今日已签到记录，强制重跑'
+        required: false
+        type: boolean
+        default: false
   schedule:
     - cron: '30 0 * * *'
 
@@ -36,6 +42,7 @@ jobs:
           TAYGEDO_LOGIN_PASSWORD: ${{ secrets.TAYGEDO_LOGIN_PASSWORD }}
           TAYGEDO_CREDENTIAL_KEY: ${{ secrets.TAYGEDO_CREDENTIAL_KEY }}
           TAYGEDO_UPDATED_ACCOUNTS_PATH: updated-accounts.json
+          TAYGEDO_FORCE_RUN: ${{ inputs.force_run || 'false' }}
         run: pnpm action
 
       - name: 更新账号 Secret

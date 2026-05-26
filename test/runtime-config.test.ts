@@ -21,6 +21,16 @@ describe('loadRuntimeConfig', () => {
       accountsKey: 'TAYGEDO_ACCOUNTS',
       statePrefix: 'taygedo',
       accountPasswords: {},
+      forceRun: false,
+    }))
+  })
+
+  it('loads the force run flag from env', () => {
+    expect(loadRuntimeConfig({ TAYGEDO_FORCE_RUN: 'true' })).toEqual(expect.objectContaining({
+      forceRun: true,
+    }))
+    expect(loadRuntimeConfig({ TAYGEDO_FORCE_RUN: '1' })).toEqual(expect.objectContaining({
+      forceRun: true,
     }))
   })
 

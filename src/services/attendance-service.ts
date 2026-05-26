@@ -11,6 +11,7 @@ export interface AttendanceServiceOptions {
   credentialKey?: string
   notificationUrls?: string[]
   maxRetries?: number
+  forceRun?: boolean
 }
 
 export class AttendanceService {
@@ -25,9 +26,10 @@ export class AttendanceService {
       credentialKey: this.options.credentialKey,
       notificationUrls: this.options.notificationUrls,
       maxRetries: this.options.maxRetries,
+      stateStore: this.options.stateStore,
+      forceRun: this.options.forceRun,
       secretWriter: payload => this.options.accountStore.writeAccounts(payload),
     })
-    await this.options.stateStore?.set('last-summary', result.summary)
     return result
   }
 }

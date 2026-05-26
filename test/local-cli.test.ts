@@ -16,6 +16,21 @@ describe('runLocalCli', () => {
     }))
   })
 
+  it('passes the force flag to local attendance', async () => {
+    const service = {
+      runAttendance: vi.fn().mockResolvedValue({ summary: 'ok' }),
+      runLogin: vi.fn(),
+      sendLoginCode: vi.fn(),
+    }
+
+    await runLocalCli(['attendance', '--accounts-file', 'accounts.json', '--force'], { service })
+
+    expect(service.runAttendance).toHaveBeenCalledWith(expect.objectContaining({
+      accountsFile: 'accounts.json',
+      forceRun: true,
+    }))
+  })
+
   it('runs password login from CLI arguments', async () => {
     const service = {
       runAttendance: vi.fn(),

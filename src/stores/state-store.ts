@@ -67,8 +67,8 @@ export class CloudflareKvStateStore implements StateStore {
     return value ? JSON.parse(value) as T : undefined
   }
 
-  async set<T>(key: string, value: T): Promise<void> {
-    await this.kv.put(this.fullKey(key), JSON.stringify(value))
+  async set<T>(key: string, value: T, options?: { ttlSeconds?: number }): Promise<void> {
+    await this.kv.put(this.fullKey(key), JSON.stringify(value), options?.ttlSeconds ? { expirationTtl: options.ttlSeconds } : undefined)
   }
 
   private fullKey(key: string): string {
@@ -93,8 +93,9 @@ export class UpstashStateStore implements StateStore {
     return data.result ? JSON.parse(data.result) as T : undefined
   }
 
-  async set<T>(key: string, value: T): Promise<void> {
-    await this.request(`set/${encodeURIComponent(this.fullKey(key))}/${encodeURIComponent(JSON.stringify(value))}`)
+  async set<T>(key: string, value: T, options?: { ttlSeconds?: number }): Promise<void> {
+    const ttlQuery = options?.ttlSeconds ? `?EX=${encodeURIComponent(String(options.ttlSeconds))}` : ''
+    await this.request(`set/${encodeURIComponent(this.fullKey(key))}/${encodeURIComponent(JSON.stringify(value))}${ttlQuery}`)
   }
 
   private async request<T>(path: string): Promise<T> {

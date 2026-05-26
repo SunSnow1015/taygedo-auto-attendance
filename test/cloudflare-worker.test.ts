@@ -29,6 +29,23 @@ describe('cloudflare worker runtime', () => {
     expect(allowed.status).toBe(200)
   })
 
+  it('force runs manual attendance from the query string', async () => {
+    const kv = new Map<string, string>()
+    const env = createEnv(kv, { TAYGEDO_ADMIN_TOKEN: 'secret' })
+    kv.set('taygedo:attendance:main:2026-05-26', JSON.stringify({ status: 'success' }))
+
+    const response = await worker.fetch(new Request('https://example.com/run?force=1', {
+      headers: { Authorization: 'Bearer secret' },
+    }), env, {} as ExecutionContext)
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual(expect.objectContaining({
+      ok: true,
+      forceRun: true,
+    }))
+    expect(env.TAYGEDO_TEST_API.refreshToken).toHaveBeenCalled()
+  })
+
   it('logs in with a password through a protected endpoint and stores accounts without plaintext password', async () => {
     const kv = new Map<string, string>()
     const env = createEnv(kv, { TAYGEDO_ADMIN_TOKEN: 'secret', TAYGEDO_CREDENTIAL_KEY: 'test-credential-key' })

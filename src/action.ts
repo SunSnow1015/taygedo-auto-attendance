@@ -29,6 +29,7 @@ export async function runAction(options: ActionOptions = {}): Promise<void> {
     credentialKey: config.credentialKey,
     notificationUrls: config.notificationUrls,
     maxRetries: config.maxRetries,
+    forceRun: config.forceRun,
   })
   await service.run()
 

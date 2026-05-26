@@ -5,24 +5,45 @@ export interface NotificationPayload {
   fetch?: typeof fetch
 }
 
-export async function sendNotification(payload: NotificationPayload): Promise<void> {
-  const fetchImpl = payload.fetch ?? fetch
-  for (const url of payload.urls) {
-    if (isServerChanUrl(url)) {
-      await fetchImpl(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-        },
-        body: new URLSearchParams({
-          title: payload.title,
-          desp: payload.content,
-        }).toString(),
-      })
-      continue
-    }
+export interface NotificationSendError {
+  url: string
+  error: string
+}
 
-    await fetchImpl(url, createJsonRequest(payload))
+export async function sendNotification(payload: NotificationPayload): Promise<NotificationSendError[]> {
+  const fetchImpl = payload.fetch ?? fetch
+  const errors: NotificationSendError[] = []
+  for (const url of payload.urls) {
+    try {
+      if (isServerChanUrl(url)) {
+        await assertNotificationResponse(fetchImpl(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+          },
+          body: new URLSearchParams({
+            title: payload.title,
+            desp: payload.content,
+          }).toString(),
+        }))
+        continue
+      }
+
+      await assertNotificationResponse(fetchImpl(url, createJsonRequest(payload)))
+    }
+    catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`Notification failed for ${url}: ${message}`)
+      errors.push({ url, error: message })
+    }
+  }
+  return errors
+}
+
+async function assertNotificationResponse(responsePromise: Promise<Response>): Promise<void> {
+  const response = await responsePromise
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
   }
 }
 

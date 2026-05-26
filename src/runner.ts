@@ -4,6 +4,7 @@ import { sendNotification } from './notify.js'
 import { withRetries } from './utils/retry.js'
 import { TAYGEDO_GAME_IDS } from './taygedo/games.js'
 import { decryptPassword } from './config/credentials.js'
+import type { StateStore } from './stores/state-store.js'
 
 export interface RunnerDependencies {
   accountsSecret: string
@@ -11,8 +12,12 @@ export interface RunnerDependencies {
   accountPasswords?: Record<string, string>
   credentialKey?: string
   notificationUrls?: string[]
+  notificationFetch?: typeof fetch
   maxRetries?: number
   secretWriter?: (payload: string) => Promise<void>
+  stateStore?: StateStore
+  forceRun?: boolean
+  now?: Date
 }
 
 type AttendanceApi = Pick<TaygedoApi, 'refreshToken' | 'getGameRoles' | 'appSignin' | 'getSigninState' | 'getSigninRewards' | 'gameSignin'>
@@ -21,11 +26,20 @@ type AttendanceApi = Pick<TaygedoApi, 'refreshToken' | 'getGameRoles' | 'appSign
 export interface RunAttendanceResult {
   updatedAccounts: TaygedoAccount[]
   summary: string
+  startedAt: string
+  finishedAt: string
+  forceRun: boolean
+  accounts: AccountRunSummary[]
+  successCount: number
+  failedCount: number
+  skippedCount: number
+  notificationErrors: NotificationError[]
 }
 
-interface AccountRunSummary {
+export interface AccountRunSummary {
   id: string
   name: string
+  status: 'success' | 'failed' | 'skipped'
   success: boolean
   appSignin?: {
     exp: number
@@ -42,18 +56,41 @@ interface AccountRunSummary {
     success: boolean
   }>
   error?: string
+  skippedReason?: string
+}
+
+export interface NotificationError {
+  url: string
+  error: string
 }
 
 export async function runAttendance(deps: RunnerDependencies): Promise<RunAttendanceResult> {
+  const startedAtDate = deps.now ?? new Date()
+  const startedAt = startedAtDate.toISOString()
+  const runDate = shanghaiDate(startedAtDate)
+  const forceRun = deps.forceRun ?? false
   const accounts = parseAccountsSecret(deps.accountsSecret)
   const api = deps.api ?? new TaygedoApi()
   const updatedAccounts: TaygedoAccount[] = []
   let secretUpdateCount = 0
-  const failedAccounts: string[] = []
   const accountSummaries: AccountRunSummary[] = []
 
   for (const account of accounts) {
+    const stateKey = attendanceStateKey(account.id, runDate)
     try {
+      if (!forceRun && await deps.stateStore?.get(stateKey)) {
+        updatedAccounts.push({ ...account })
+        accountSummaries.push({
+          id: account.id,
+          name: account.name,
+          status: 'skipped',
+          success: false,
+          gameSignins: [],
+          skippedReason: '今天已成功签到',
+        })
+        continue
+      }
+
       const accountRun = await withRetries(async () => {
         return await runAccount(api, account, deps.accountPasswords ?? {}, deps.credentialKey)
       }, deps.maxRetries ?? 3)
@@ -63,13 +100,20 @@ export async function runAttendance(deps: RunnerDependencies): Promise<RunAttend
       }
       updatedAccounts.push(accountRun.updatedAccount)
       accountSummaries.push(accountRun.summary)
+      await deps.stateStore?.set(stateKey, {
+        status: 'success',
+        accountId: account.id,
+        accountName: account.name,
+        date: runDate,
+        updatedAt: new Date().toISOString(),
+      }, { ttlSeconds: 60 * 60 * 36 })
     }
     catch (error) {
       updatedAccounts.push({ ...account })
-      failedAccounts.push(account.id)
       accountSummaries.push({
         id: account.id,
         name: account.name,
+        status: 'failed',
         success: false,
         gameSignins: [],
         error: error instanceof Error ? error.message : String(error),
@@ -84,18 +128,45 @@ export async function runAttendance(deps: RunnerDependencies): Promise<RunAttend
   const summary = buildSummary(accountSummaries)
   console.log(summary)
 
+  const notificationErrors: NotificationError[] = []
   if (deps.notificationUrls?.length) {
-    await sendNotification({
+    notificationErrors.push(...await sendNotification({
       urls: deps.notificationUrls,
       title: '塔吉多每日签到',
       content: summary,
-    })
+      fetch: deps.notificationFetch,
+    }))
   }
 
-  return {
+  const successCount = accountSummaries.filter(account => account.status === 'success').length
+  const failedCount = accountSummaries.filter(account => account.status === 'failed').length
+  const skippedCount = accountSummaries.filter(account => account.status === 'skipped').length
+  const finishedAt = new Date().toISOString()
+  const result: RunAttendanceResult = {
     updatedAccounts,
     summary,
+    startedAt,
+    finishedAt,
+    forceRun,
+    accounts: accountSummaries,
+    successCount,
+    failedCount,
+    skippedCount,
+    notificationErrors,
   }
+  await deps.stateStore?.set('last-summary', summary)
+  await deps.stateStore?.set('last-run', {
+    startedAt,
+    finishedAt,
+    forceRun,
+    totalCount: accounts.length,
+    successCount,
+    failedCount,
+    skippedCount,
+    accounts: accountSummaries,
+    notificationErrors,
+  })
+  return result
 }
 
 interface AccountRunResult {
@@ -111,18 +182,11 @@ async function runAccount(
   credentialKey?: string,
 ): Promise<AccountRunResult> {
   if (account.accessToken) {
-    try {
-      return await signWithSession(api, account, account.accessToken, false)
-    }
-    catch (error) {
-      if (!isAuthError(error)) {
-        throw error
-      }
-    }
+    return await signWithRecoverableSession(api, account, account.accessToken, accountPasswords, credentialKey, false)
   }
 
   const session = await refreshOrRebuildSession(api, account, accountPasswords, credentialKey)
-  return await signWithSession(api, session.account, session.accessToken, true)
+  return await signWithRecoverableSession(api, session.account, session.accessToken, accountPasswords, credentialKey, true)
 }
 
 async function refreshOrRebuildSession(
@@ -239,10 +303,31 @@ async function signWithSession(
     summary: {
       id: account.id,
       name: account.name,
+      status: 'success',
       success: true,
       appSignin,
       gameSignins,
     },
+  }
+}
+
+async function signWithRecoverableSession(
+  api: AttendanceApi,
+  account: TaygedoAccount,
+  accessToken: string,
+  accountPasswords: Record<string, string>,
+  credentialKey: string | undefined,
+  shouldUpdateSecret: boolean,
+): Promise<AccountRunResult> {
+  try {
+    return await signWithSession(api, account, accessToken, shouldUpdateSecret)
+  }
+  catch (error) {
+    if (!isAuthError(error)) {
+      throw error
+    }
+    const session = await refreshOrRebuildSession(api, account, accountPasswords, credentialKey)
+    return await signWithSession(api, session.account, session.accessToken, true)
   }
 }
 
@@ -305,16 +390,17 @@ async function getAllGameRoles(
 }
 
 function buildSummary(accounts: AccountRunSummary[]): string {
-  const successCount = accounts.filter(account => account.success).length
-  const failedCount = accounts.length - successCount
+  const successCount = accounts.filter(account => account.status === 'success').length
+  const failedCount = accounts.filter(account => account.status === 'failed').length
+  const skippedCount = accounts.filter(account => account.status === 'skipped').length
   const lines = [
     '塔吉多每日签到结果',
-    `总账号：${accounts.length}，成功：${successCount}，失败：${failedCount}`,
+    `总账号：${accounts.length}，成功：${successCount}，失败：${failedCount}，跳过：${skippedCount}`,
     '',
   ]
 
   for (const account of accounts) {
-    lines.push(`${account.name}（${account.id}）：${account.success ? '成功' : '失败'}`)
+    lines.push(`${account.name}（${account.id}）：${statusLabel(account.status)}`)
     if (account.appSignin) {
       lines.push(`- APP 签到：获得 ${account.appSignin.goldCoin} 金币，${account.appSignin.exp} 经验`)
     }
@@ -326,8 +412,34 @@ function buildSummary(accounts: AccountRunSummary[]): string {
     if (account.error) {
       lines.push(`- 失败原因：${account.error}`)
     }
+    if (account.skippedReason) {
+      lines.push(`- 跳过原因：${account.skippedReason}`)
+    }
     lines.push('')
   }
 
   return lines.join('\n').trim()
+}
+
+function statusLabel(status: AccountRunSummary['status']): string {
+  if (status === 'success') {
+    return '成功'
+  }
+  if (status === 'skipped') {
+    return '跳过'
+  }
+  return '失败'
+}
+
+function attendanceStateKey(accountId: string, date: string): string {
+  return `attendance:${accountId}:${date}`
+}
+
+function shanghaiDate(date: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date)
 }

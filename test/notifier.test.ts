@@ -47,4 +47,23 @@ describe('sendNotification', () => {
       }),
     )
   })
+
+  it('returns failed notification urls while continuing later sends', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('bad', { status: 500 }))
+      .mockResolvedValueOnce(new Response('ok', { status: 200 }))
+
+    const errors = await sendNotification({
+      urls: ['https://example.com/a', 'https://example.com/b'],
+      title: '塔吉多每日签到',
+      content: '签到完成',
+      fetch: fetchMock,
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(errors).toEqual([{
+      url: 'https://example.com/a',
+      error: 'HTTP 500',
+    }])
+  })
 })

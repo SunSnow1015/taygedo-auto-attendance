@@ -87,13 +87,15 @@ describe('StateStore implementations', () => {
 
   it('stores values in Cloudflare KV with a prefix', async () => {
     const kv = new Map<string, string>()
+    const put = vi.fn(async (key: string, value: string) => { kv.set(key, value) })
     const store = new CloudflareKvStateStore({
       get: vi.fn(async key => kv.get(key) ?? null),
-      put: vi.fn(async (key, value) => { kv.set(key, value) }),
+      put,
     }, 'prod')
 
-    await store.set('last', { ok: true })
+    await store.set('last', { ok: true }, { ttlSeconds: 60 })
     expect(kv.has('prod:last')).toBe(true)
+    expect(put).toHaveBeenCalledWith('prod:last', JSON.stringify({ ok: true }), { expirationTtl: 60 })
     await expect(store.get('last')).resolves.toEqual({ ok: true })
   })
 
@@ -103,12 +105,12 @@ describe('StateStore implementations', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ result: JSON.stringify({ ok: true }) }), { status: 200 }))
     const store = new UpstashStateStore('https://redis.example.com', 'redis-token', 'prod', fetchMock)
 
-    await store.set('last', { ok: true })
+    await store.set('last', { ok: true }, { ttlSeconds: 60 })
     await expect(store.get('last')).resolves.toEqual({ ok: true })
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      'https://redis.example.com/set/prod%3Alast/%7B%22ok%22%3Atrue%7D',
+      'https://redis.example.com/set/prod%3Alast/%7B%22ok%22%3Atrue%7D?EX=60',
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: 'Bearer redis-token' }),
       }),

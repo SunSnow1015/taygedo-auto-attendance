@@ -53,8 +53,8 @@ const worker = {
     }
 
     if (url.pathname === '/run') {
-      const result = await runCloudflareAttendance(env)
-      return Response.json({ ok: true, summary: result.summary })
+      const result = await runCloudflareAttendance(env, isForceRunRequest(url))
+      return Response.json({ ok: true, summary: result.summary, forceRun: result.forceRun })
     }
 
     return Response.json({ error: 'Not found' }, { status: 404 })
@@ -294,7 +294,7 @@ function renderManagementPage(): string {
 </html>`
 }
 
-async function runCloudflareAttendance(env: CloudflareEnv) {
+async function runCloudflareAttendance(env: CloudflareEnv, forceRun?: boolean) {
   const config = loadRuntimeConfig(envToStrings(env))
   const service = new AttendanceService({
     accountStore: createAccountStore({ config, kv: env.KV }),
@@ -304,8 +304,14 @@ async function runCloudflareAttendance(env: CloudflareEnv) {
     credentialKey: config.credentialKey,
     notificationUrls: config.notificationUrls,
     maxRetries: config.maxRetries,
+    forceRun: forceRun ?? config.forceRun,
   })
   return await service.run()
+}
+
+function isForceRunRequest(url: URL): boolean {
+  const value = url.searchParams.get('force')
+  return value === '1' || value === 'true'
 }
 
 async function runCloudflareLogin(request: Request, env: CloudflareEnv) {

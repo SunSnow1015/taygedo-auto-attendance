@@ -13,6 +13,7 @@ export interface RuntimeConfig {
   stateStore: StateStoreKind
   accountsKey: string
   statePrefix: string
+  forceRun: boolean
   adminToken?: string
   upstashUrl?: string
   upstashToken?: string
@@ -34,6 +35,7 @@ export function loadRuntimeConfig(env: Record<string, string | undefined>): Runt
     stateStore: parseStateStore(optionalEnv(env, 'TAYGEDO_STATE_STORE') ?? 'memory'),
     accountsKey: optionalEnv(env, 'TAYGEDO_ACCOUNTS_KEY') ?? 'TAYGEDO_ACCOUNTS',
     statePrefix: optionalEnv(env, 'TAYGEDO_STATE_PREFIX') ?? 'taygedo',
+    forceRun: parseBoolean(optionalEnv(env, 'TAYGEDO_FORCE_RUN')),
     adminToken: optionalEnv(env, 'TAYGEDO_ADMIN_TOKEN'),
     upstashUrl: optionalEnv(env, 'TAYGEDO_UPSTASH_REDIS_REST_URL') ?? optionalEnv(env, 'UPSTASH_REDIS_REST_URL'),
     upstashToken: optionalEnv(env, 'TAYGEDO_UPSTASH_REDIS_REST_TOKEN') ?? optionalEnv(env, 'UPSTASH_REDIS_REST_TOKEN'),
@@ -100,6 +102,13 @@ function parseStateStore(value: string): StateStoreKind {
     return value
   }
   throw new Error(`Unsupported TAYGEDO_STATE_STORE: ${value}`)
+}
+
+function parseBoolean(value: string | undefined): boolean {
+  if (!value) {
+    return false
+  }
+  return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase())
 }
 
 function optionalEnv(env: Record<string, string | undefined>, key: string): string | undefined {

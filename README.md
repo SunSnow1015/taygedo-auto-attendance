@@ -67,6 +67,12 @@ curl -X POST \
 curl -H "Authorization: Bearer <TAYGEDO_ADMIN_TOKEN>" https://你的-worker.workers.dev/run
 ```
 
+强制忽略今日去重并重跑：
+
+```bash
+curl -H "Authorization: Bearer <TAYGEDO_ADMIN_TOKEN>" "https://你的-worker.workers.dev/run?force=1"
+```
+
 </details>
 
 ### GitHub Actions 部署
@@ -134,7 +140,7 @@ account_name=主账号
 
 #### 6. 执行签到
 
-进入 **Actions** -> **塔吉多签到** -> **Run workflow**。
+进入 **Actions** -> **塔吉多签到** -> **Run workflow**。如果需要忽略今日去重并补跑，把 `force_run` 设为 `true`。
 
 看到类似下面的日志就说明部署完成：
 
@@ -168,6 +174,7 @@ TAYGEDO_CREDENTIAL_KEY_PATH=/data/credential-key
 TAYGEDO_NOTIFICATION_URLS=
 TAYGEDO_SERVERCHAN_SENDKEY=
 TAYGEDO_MAX_RETRIES=3
+TAYGEDO_FORCE_RUN=false
 ```
 
 生成账号文件：
@@ -186,6 +193,12 @@ docker compose run --rm taygedo-attendance \
 
 ```bash
 docker compose run --rm taygedo-attendance
+```
+
+强制忽略今日去重：
+
+```bash
+TAYGEDO_FORCE_RUN=true docker compose run --rm taygedo-attendance
 ```
 
 本地构建镜像：
@@ -347,10 +360,22 @@ TAYGEDO_SERVERCHAN_SENDKEY=SCTxxxxxxxxxxxxxxxxxxxxxxxx
 | `TAYGEDO_STATE_STORE` | 状态存储，支持 `memory`、`file`、`cloudflare-kv`、`upstash` |
 | `TAYGEDO_ACCOUNTS_KEY` | 账号存储 key，默认 `TAYGEDO_ACCOUNTS` |
 | `TAYGEDO_STATE_PREFIX` | 状态存储前缀，默认 `taygedo` |
+| `TAYGEDO_FORCE_RUN` | 忽略今日去重强制重跑，支持 `true` / `1` |
 | `TAYGEDO_UPSTASH_REDIS_REST_URL` | Upstash REST URL |
 | `TAYGEDO_UPSTASH_REDIS_REST_TOKEN` | Upstash REST Token |
 
 Cloudflare Workers 默认使用 KV；Docker 和本地 CLI 默认使用文件存储。
+
+### 失败排查
+
+| 现象 | 可能原因 | 处理方式 |
+| --- | --- | --- |
+| workflow 更新 Secret 失败 | `GH_SECRET_UPDATE_TOKEN` 缺失或 PAT 没有 Secrets 读写权限 | 重新创建 fine-grained PAT，并授予目标仓库 `Secrets: Read and write` |
+| Actions 页面没有运行按钮 | Fork 后未启用 Actions | 打开仓库 **Actions** 页面并确认启用 workflow |
+| password 登录失败或提示缺少密码 | 没有填写 `password` 输入，也没有配置 `TAYGEDO_LOGIN_PASSWORD` | 优先把密码保存为 `TAYGEDO_LOGIN_PASSWORD` Secret |
+| 签到开始前报账号 JSON 错误 | `TAYGEDO_ACCOUNTS` 不是数组或缺少必填字段 | 重新运行登录 workflow，或按示例修正账号 JSON |
+| Cloudflare Worker 找不到账号 | 没有绑定名为 `KV` 的 KV，或 KV 中没有账号配置 | 确认 Worker KV binding 名称是 `KV`，再用根路径登录页或 `/login` 写入账号 |
+| Cloudflare 密码登录提示缺少 `TAYGEDO_CREDENTIAL_KEY` | Worker 不能自动写 Cloudflare Secret | 在 Cloudflare 控制台手动添加 `TAYGEDO_CREDENTIAL_KEY` Secret |
 
 ## 注意事项
 
