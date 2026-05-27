@@ -94,7 +94,7 @@ export class TaygedoApi {
     }
 
     if (!response.ok || data.code !== 0) {
-      throw new Error(data.message ?? data.msg ?? '发送短信验证码请求失败')
+      throw apiResponseError('sendCaptcha', response, data, '发送短信验证码请求失败')
     }
   }
 
@@ -131,7 +131,7 @@ export class TaygedoApi {
     }
 
     if (!response.ok || data.code !== 0) {
-      throw new Error(data.message ?? data.msg ?? '校验短信验证码请求失败')
+      throw apiResponseError('checkCaptcha', response, data, '校验短信验证码请求失败')
     }
   }
 
@@ -178,7 +178,7 @@ export class TaygedoApi {
     }
 
     if (!response.ok || data.code !== 0 || !data.result?.token || data.result.userId === undefined) {
-      throw new Error(data.message ?? data.msg ?? '短信验证码登录请求失败')
+      throw apiResponseError('loginWithCaptcha', response, data, '短信验证码登录请求失败')
     }
 
     return {
@@ -228,7 +228,7 @@ export class TaygedoApi {
     }
 
     if (!response.ok || data.code !== 0 || !data.result?.token || data.result.userId === undefined) {
-      throw new Error(data.message ?? data.msg ?? '账号密码登录请求失败')
+      throw apiResponseError('loginWithPassword', response, data, '账号密码登录请求失败')
     }
 
     return {
@@ -267,7 +267,7 @@ export class TaygedoApi {
     }
 
     if (!response.ok || data.code !== 0 || !data.data?.accessToken || !data.data.refreshToken || data.data.uid === undefined) {
-      throw new Error(data.msg ?? '塔吉多用户中心登录请求失败')
+      throw apiResponseError('userCenterLogin', response, data, '塔吉多用户中心登录请求失败')
     }
 
     return {
@@ -304,7 +304,7 @@ export class TaygedoApi {
     }
 
     if (!response.ok || data.code !== 0 || !data.data?.accessToken || !data.data?.refreshToken) {
-      throw new Error(data.msg ?? '刷新登录令牌请求失败')
+      throw apiResponseError('refreshToken', response, data, '刷新登录令牌请求失败')
     }
 
     return {
@@ -329,7 +329,7 @@ export class TaygedoApi {
     }
 
     if (!response.ok || data.code !== 0 || !data.data) {
-      throw new Error(data.msg ?? '获取绑定角色请求失败')
+      throw apiResponseError('getBindRole', response, data, '获取绑定角色请求失败')
     }
 
     return data.data
@@ -357,7 +357,7 @@ export class TaygedoApi {
     }
 
     if (!response.ok || data.code !== 0 || !Array.isArray(data.data?.roles)) {
-      throw new Error(data.msg ?? '获取游戏角色请求失败')
+      throw apiResponseError('getGameRoles', response, data, '获取游戏角色请求失败')
     }
 
     return {
@@ -396,7 +396,7 @@ export class TaygedoApi {
       || typeof data.data?.exp !== 'number'
       || typeof data.data?.goldCoin !== 'number'
     ) {
-      throw new Error(data.msg ?? 'APP 签到请求失败')
+      throw apiResponseError('appSignin', response, data, 'APP 签到请求失败')
     }
 
     return {
@@ -421,7 +421,7 @@ export class TaygedoApi {
     }
 
     if (!response.ok || data.code !== 0 || typeof data.data?.days !== 'number') {
-      throw new Error(data.msg ?? '获取游戏签到状态请求失败')
+      throw apiResponseError('getSigninState', response, data, '获取游戏签到状态请求失败')
     }
 
     return {
@@ -445,7 +445,7 @@ export class TaygedoApi {
     }
 
     if (!response.ok || data.code !== 0 || !Array.isArray(data.data)) {
-      throw new Error(data.msg ?? '获取游戏签到奖励请求失败')
+      throw apiResponseError('getSigninRewards', response, data, '获取游戏签到奖励请求失败')
     }
 
     return data.data
@@ -466,7 +466,7 @@ export class TaygedoApi {
     }
 
     if (!response.ok || data.code !== 0) {
-      throw new Error(data.msg ?? '游戏签到请求失败')
+      throw apiResponseError('gameSignin', response, data, '游戏签到请求失败')
     }
   }
 
@@ -489,7 +489,7 @@ export class TaygedoApi {
     }
 
     if (!response.ok || data.code !== 0 || !Array.isArray(data.data?.task_list1)) {
-      throw new Error(data.msg ?? '获取金币任务状态请求失败')
+      throw apiResponseError('getUserTasks', response, data, '获取金币任务状态请求失败')
     }
 
     return data.data.task_list1
@@ -517,7 +517,7 @@ export class TaygedoApi {
       msg?: string
     }
     if (!response.ok || data.code !== 0) {
-      throw new Error(data.msg ?? 'BBS 金币签到请求失败')
+      throw apiResponseError('bbsSignin', response, data, 'BBS 金币签到请求失败')
     }
   }
 
@@ -572,7 +572,7 @@ export class TaygedoApi {
     const post = isRecord(data.data) ? toRecommendPost(data.data) : undefined
 
     if (!response.ok || data.code !== 0 || !post) {
-      throw new Error(data.msg ?? '获取帖子详情请求失败')
+      throw apiResponseError('getPostFull', response, data, '获取帖子详情请求失败')
     }
 
     return post
@@ -593,7 +593,7 @@ export class TaygedoApi {
       msg?: string
     }
     if (!response.ok || data.code !== 0) {
-      throw new Error(data.msg ?? '点赞帖子请求失败')
+      throw apiResponseError('likePost', response, data, '点赞帖子请求失败')
     }
   }
 
@@ -612,7 +612,7 @@ export class TaygedoApi {
       msg?: string
     }
     if (!response.ok || data.code !== 0) {
-      throw new Error(data.msg ?? '分享帖子请求失败')
+      throw apiResponseError('sharePost', response, data, '分享帖子请求失败')
     }
   }
 
@@ -629,7 +629,7 @@ export class TaygedoApi {
       data?: CoinState
     }
     if (!response.ok || data.code !== 0 || !isRecord(data.data)) {
-      throw new Error(data.msg ?? '获取金币状态请求失败')
+      throw apiResponseError('getUserCoinTaskState', response, data, '获取金币状态请求失败')
     }
     return data.data
   }
@@ -681,10 +681,10 @@ function summarizeResponse(text: string): string {
 function apiResponseError(
   endpointName: string,
   response: Response,
-  data: { code?: number, msg?: string },
+  data: { code?: number, msg?: string, message?: string },
   fallback: string,
 ): Error {
-  const msg = data.msg?.trim()
+  const msg = (data.message ?? data.msg)?.trim()
   if (msg && msg.toLowerCase() !== 'ok') {
     return new Error(msg)
   }

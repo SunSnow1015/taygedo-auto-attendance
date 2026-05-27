@@ -457,6 +457,7 @@ async function runCoinTasks(
     like: { done: 0, target: likeTarget },
     share: { done: 0, target: shareTarget, platform: sharePlatform },
   }
+  const errors: string[] = []
 
   if (bbsTarget > 0) {
     await signBbsIdempotently(coinTaskApi, accessToken, account)
@@ -473,9 +474,14 @@ async function runCoinTasks(
       break
     }
     await delay(randomDelay(700, 1500))
-    const fullPost = await api.getPostFull(accessToken, account.uid, account.deviceId, post.postId)
-    browsedPosts.push(fullPost)
-    summary.browse.done++
+    try {
+      const fullPost = await api.getPostFull(accessToken, account.uid, account.deviceId, post.postId)
+      browsedPosts.push(fullPost)
+      summary.browse.done++
+    }
+    catch (error) {
+      errors.push(`浏览帖子 ${post.postId} 失败：${errorMessage(error)}`)
+    }
   }
 
   const likeCandidates = [...browsedPosts, ...posts]
@@ -492,18 +498,35 @@ async function runCoinTasks(
       continue
     }
     await delay(randomDelay(500, 1000))
-    await api.likePost(accessToken, account.uid, account.deviceId, post.postId)
-    summary.like.done++
+    try {
+      await api.likePost(accessToken, account.uid, account.deviceId, post.postId)
+      summary.like.done++
+    }
+    catch (error) {
+      errors.push(`点赞帖子 ${post.postId} 失败：${errorMessage(error)}`)
+    }
   }
 
   const sharePost = browsedPosts[0] ?? posts[0]
   if (shareTarget > 0 && sharePost) {
-    await api.sharePost(accessToken, account.uid, account.deviceId, sharePost.postId, sharePlatform)
-    summary.share.done = 1
+    try {
+      await api.sharePost(accessToken, account.uid, account.deviceId, sharePost.postId, sharePlatform)
+      summary.share.done = 1
+    }
+    catch (error) {
+      errors.push(`分享帖子 ${sharePost.postId} 失败：${errorMessage(error)}`)
+    }
   }
 
   summary.coinState = await api.getUserCoinTaskState(accessToken)
+  if (errors.length) {
+    summary.error = errors.join('；')
+  }
   return summary
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 async function signBbsIdempotently(

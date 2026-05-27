@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { runAttendance } from '../src/runner.js'
 import { encryptPassword } from '../src/config/credentials.js'
 import { MemoryStateStore } from '../src/stores/state-store.js'
+import { TaygedoApi } from '../src/taygedo/api.js'
 
 describe('runAttendance', () => {
   const shanghaiNoon = new Date('2026-05-26T04:00:00.000Z')
@@ -864,4 +865,104 @@ describe('runAttendance', () => {
     expect(api.getUserTasks).not.toHaveBeenCalled()
     expect(api.bbsSignin).not.toHaveBeenCalled()
   })
+
+  it('runs the full HTTP-backed attendance flow and keeps coin tasks resilient', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const parsed = new URL(url)
+      const path = parsed.pathname
+      const method = init?.method ?? 'GET'
+      if (path === '/usercenter/api/v2/getGameRoles') {
+        if (parsed.searchParams.get('gameId') === '1289') {
+          return jsonResponse({ code: 0, msg: 'ok', data: { roles: [{ roleId: 'role-1289', roleName: '异环角色' }] } })
+        }
+        return jsonResponse({ code: 0, msg: 'ok', data: { roles: [] } })
+      }
+      if (path === '/apihub/api/signin' && method === 'POST') {
+        return jsonResponse({ code: 1, msg: '您今天已经签到过了' })
+      }
+      if (path === '/apihub/awapi/signin/state') {
+        return jsonResponse({ code: 0, msg: 'ok', data: { days: 4 } })
+      }
+      if (path === '/apihub/awapi/sign/rewards') {
+        return jsonResponse({ code: 0, msg: 'ok', data: [{ name: '甲硬币', num: 10000 }] })
+      }
+      if (path === '/apihub/awapi/sign') {
+        return jsonResponse({ code: 1, msg: '重复签到' })
+      }
+      if (path === '/apihub/api/getUserTasks') {
+        return jsonResponse({
+          code: 0,
+          msg: 'ok',
+          data: {
+            task_list1: [
+              { code: 'signin_c', completeTimes: 0, limitTimes: 1 },
+              { code: 'browse_post_c', completeTimes: 0, limitTimes: 2 },
+              { code: 'like_post_c', completeTimes: 0, limitTimes: 1 },
+              { code: 'share', completeTimes: 0, limitTimes: 1 },
+            ],
+          },
+        })
+      }
+      if (path === '/bbs/api/getRecommendPostList') {
+        return jsonResponse({
+          code: 0,
+          msg: 'ok',
+          data: {
+            hasMore: true,
+            posts: [
+              { id: 100, selfOperation: { liked: false } },
+              { id: 200, selfOperation: { liked: false } },
+            ],
+          },
+        })
+      }
+      if (path === '/bbs/api/getPostFull') {
+        const postId = parsed.searchParams.get('postId')
+        if (postId === '100') {
+          return jsonResponse({ code: 0, msg: 'ok', data: { unexpected: true } })
+        }
+        return jsonResponse({ code: 0, msg: 'ok', data: { id: postId, selfOperation: { liked: false } } })
+      }
+      if (path === '/bbs/api/post/like') {
+        return jsonResponse({ code: 1, msg: 'ok' })
+      }
+      if (path === '/bbs/api/post/share') {
+        return jsonResponse({ code: 0, msg: 'ok' })
+      }
+      if (path === '/apihub/api/getUserCoinTaskState') {
+        return jsonResponse({ code: 0, msg: 'ok', data: { todayCoin: 120, limitCoin: 150 } })
+      }
+      throw new Error(`unexpected request: ${method} ${url}`)
+    }) as unknown as typeof fetch
+
+    const result = await runAttendance({
+      accountsSecret: JSON.stringify([
+        {
+          id: 'main',
+          name: '主账号',
+          uid: '1',
+          deviceId: 'device-1',
+          accessToken: 'access-main',
+          refreshToken: 'refresh-main',
+        },
+      ]),
+      api: new TaygedoApi({ fetch: fetchMock }),
+      maxRetries: 1,
+      coinTasks: true,
+      sharePlatform: 'qq',
+      delay: () => Promise.resolve(),
+    })
+
+    expect(result.successCount).toBe(1)
+    expect(result.failedCount).toBe(0)
+    expect(result.summary).toContain('APP 签到：今日已签到')
+    expect(result.summary).toContain('游戏 1289 / 异环角色：今日已签到，本月第 4 天')
+    expect(result.summary).toContain('金币任务：签到✓ 浏览1/2 点赞0/1 分享✓ 今日金币120/150')
+    expect(result.accounts[0]?.coinTasks?.error).toContain('getPostFull 请求失败')
+    expect(result.accounts[0]?.coinTasks?.error).toContain('likePost 请求失败')
+  })
 })
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), { status: 200 })
+}

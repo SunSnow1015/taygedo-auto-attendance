@@ -57,6 +57,17 @@ describe('TaygedoApi', () => {
     )
   })
 
+  it('does not use a bare ok message for malformed signed endpoint responses', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ code: 0, msg: 'ok', data: { unexpected: true } }), { status: 200 }),
+    )
+    const api = new TaygedoApi({ fetch: fetchMock })
+
+    await expect(api.getPostFull('access-token', 'uid-1', 'device-1', 'post-1')).rejects.toThrow(
+      'getPostFull 请求失败（HTTP 200，code=0，msg=ok，响应：{"code":0,"msg":"ok","data":{"unexpected":true}}）',
+    )
+  })
+
   it('reads recommended posts from the posts field returned by the bbs api', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({
