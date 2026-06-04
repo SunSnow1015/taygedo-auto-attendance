@@ -600,6 +600,37 @@ describe('runAttendance', () => {
     expect(result.summary).toContain('游戏 1256 / 幻塔A：签到成功，本月第 1 天，奖励 墨晶 x5')
   })
 
+  it('reads game signin days after signing so the first day is not shown as day zero', async () => {
+    const api = {
+      refreshToken: vi.fn().mockResolvedValue({ accessToken: 'access-main', refreshToken: 'new-main' }),
+      getGameRoles: vi.fn()
+        .mockResolvedValueOnce({ roles: [{ roleId: 'role-1256-a', roleName: '幻塔A' }] })
+        .mockResolvedValueOnce({ roles: [] })
+        .mockResolvedValueOnce({ roles: [] }),
+      appSignin: vi.fn().mockResolvedValue({ exp: 10, goldCoin: 20 }),
+      getSigninState: vi.fn().mockResolvedValue({ days: 1 }),
+      getSigninRewards: vi.fn().mockResolvedValue([{ name: '墨晶', num: 5 }]),
+      gameSignin: vi.fn().mockResolvedValue(undefined),
+    }
+
+    const result = await runAttendance({
+      accountsSecret: JSON.stringify([
+        {
+          id: 'main',
+          name: '主账号',
+          uid: '1',
+          deviceId: 'device-1',
+          refreshToken: 'old-main',
+        },
+      ]),
+      api,
+      maxRetries: 1,
+    })
+
+    expect(api.gameSignin.mock.invocationCallOrder[0]).toBeLessThan(api.getSigninState.mock.invocationCallOrder[0])
+    expect(result.summary).toContain('游戏 1256 / 幻塔A：签到成功，本月第 1 天，奖励 墨晶 x5')
+  })
+
   it('continues game signins when app signin reports already signed today', async () => {
     const api = {
       refreshToken: vi.fn().mockResolvedValue({ accessToken: 'access-main', refreshToken: 'new-main' }),

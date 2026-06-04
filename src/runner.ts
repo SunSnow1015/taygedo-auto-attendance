@@ -325,11 +325,11 @@ async function signWithSession(
 
   const appSignin = await signAppIdempotently(api, accessToken, account)
   const gameSignins: AccountRunSummary['gameSignins'] = await Promise.all(gameRoles.map(async (role) => {
+    const gameSignin = await signGameIdempotently(api, accessToken, role.roleId, role.gameId)
     const [signinState, signinRewards] = await Promise.all([
       api.getSigninState(accessToken, role.gameId),
       api.getSigninRewards(accessToken, role.gameId),
     ])
-    const gameSignin = await signGameIdempotently(api, accessToken, role.roleId, role.gameId)
     return {
       gameId: role.gameId,
       roleName: role.roleName ?? role.roleId,
