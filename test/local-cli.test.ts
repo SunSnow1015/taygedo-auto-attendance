@@ -228,4 +228,46 @@ describe('runLocalCli', () => {
       print: true,
     })
   })
+
+  it('runs attendance at the daily time from TAYGEDO_RUN_AT', async () => {
+    vi.useFakeTimers()
+    const originalRunAt = process.env.TAYGEDO_RUN_AT
+    const originalLoopSeconds = process.env.TAYGEDO_LOOP_SECONDS
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      vi.setSystemTime(new Date('2026-10-18T05:00:00Z')) // 13:00 Asia/Shanghai
+      process.env.TAYGEDO_RUN_AT = ' 09:30 '
+      process.env.TAYGEDO_LOOP_SECONDS = '86400'
+      const service = {
+        runAttendance: vi.fn().mockResolvedValue({ summary: 'ok' }),
+        runLogin: vi.fn(),
+        sendLoginCode: vi.fn(),
+        updateDevices: vi.fn(),
+      }
+
+      await runLocalCli(['attendance', '--accounts-file', 'accounts.json'], { service })
+
+      expect(service.runAttendance).toHaveBeenCalledTimes(1)
+      const messages = log.mock.calls.map(call => String(call[0])).join('\n')
+      expect(messages).toContain('定时模式：每日 09:30')
+      expect(messages).not.toContain('循环模式')
+
+      await vi.advanceTimersByTimeAsync(20.5 * 60 * 60 * 1000)
+
+      expect(service.runAttendance).toHaveBeenCalledTimes(2)
+    } finally {
+      log.mockRestore()
+      if (originalRunAt === undefined) {
+        delete process.env.TAYGEDO_RUN_AT
+      } else {
+        process.env.TAYGEDO_RUN_AT = originalRunAt
+      }
+      if (originalLoopSeconds === undefined) {
+        delete process.env.TAYGEDO_LOOP_SECONDS
+      } else {
+        process.env.TAYGEDO_LOOP_SECONDS = originalLoopSeconds
+      }
+      vi.useRealTimers()
+    }
+  })
 })

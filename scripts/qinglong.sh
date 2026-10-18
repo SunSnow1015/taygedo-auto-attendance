@@ -109,6 +109,15 @@ EOF
 }
 
 run_attendance() {
+  # 青龙面板本身就是调度器：带上常驻参数会让任务一直不结束，这里统一清掉
+  local scheduled_var
+  for scheduled_var in TAYGEDO_RUN_AT TAYGEDO_LOOP_SECONDS; do
+    if [[ -n "${!scheduled_var:-}" ]]; then
+      echo "[警告] 青龙面板负责定时调度，已忽略 $scheduled_var；如需常驻定时请改用 Docker 部署。" >&2
+      unset "$scheduled_var"
+    fi
+  done
+
   local extra_args=()
   if is_truthy "${TAYGEDO_FORCE_RUN:-}"; then
     extra_args+=(--force)

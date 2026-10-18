@@ -321,6 +321,7 @@ TAYGEDO_MAX_RETRIES=3
 TAYGEDO_ACCOUNT_CONCURRENCY=1
 TAYGEDO_FORCE_RUN=false
 TAYGEDO_LOOP_SECONDS=
+TAYGEDO_RUN_AT=
 ```
 
 生成账号文件：
@@ -347,13 +348,23 @@ docker compose run --rm taygedo-attendance
 TAYGEDO_FORCE_RUN=true docker compose run --rm taygedo-attendance
 ```
 
-常驻循环模式：
+> 以上一次性命令同样会读取 `.env`。若 `.env` 中设置了 `TAYGEDO_RUN_AT` 或 `TAYGEDO_LOOP_SECONDS`，容器会进入常驻模式而不退出，请显式清空：`TAYGEDO_RUN_AT= TAYGEDO_LOOP_SECONDS= docker compose run --rm taygedo-attendance`。
+
+常驻定时模式：
+
+```bash
+TAYGEDO_RUN_AT=09:30 docker compose up -d
+```
+
+设置 `TAYGEDO_RUN_AT`（24 小时制 `HH:MM`，上海时区）后，容器启动会先立即执行一次，之后每日固定在该时刻执行，不再受启动时间影响；进程会一直常驻，请用 `docker compose up -d` 启动，并建议设置 `TAYGEDO_DOCKER_RESTART=always`，避免宿主机重启后定时任务静默停止。首次执行失败不会让进程退出，日志会记录失败原因并继续等待下一时刻；若首次执行耗时超过当天定时时刻，当天这一次会被跳过并在日志中提示。配合今日去重，当天已签到时重复触发不会重复执行；去重依赖持久化状态存储，请勿同时设置 `TAYGEDO_STATE_STORE=memory`。
+
+也仍支持按间隔秒数循环（首次执行结束后开始倒计时）：
 
 ```bash
 TAYGEDO_LOOP_SECONDS=86400 docker compose up -d
 ```
 
-设置后容器启动会立即执行一次，然后按秒循环。默认留空仍是一次性任务。
+两者同时设置时 `TAYGEDO_RUN_AT` 优先。默认留空仍是一次性任务，启动即执行一次后退出。
 
 本地构建镜像：
 
@@ -656,7 +667,8 @@ TAYGEDO_SERVERCHAN_SENDKEY=SCTxxxxxxxxxxxxxxxxxxxxxxxx
 | `TAYGEDO_STATE_PREFIX` | 状态存储前缀，默认 `taygedo` |
 | `TAYGEDO_ACCOUNT_CONCURRENCY` | 多账号并发数，默认 `1` |
 | `TAYGEDO_FORCE_RUN` | 忽略今日去重强制重跑，支持 `true` / `1` |
-| `TAYGEDO_LOOP_SECONDS` | Docker / 本地 CLI 常驻循环间隔秒数，留空表示执行一次 |
+| `TAYGEDO_LOOP_SECONDS` | Docker / 本地 CLI 常驻循环间隔秒数，留空表示执行一次（首次执行结束后开始倒计时） |
+| `TAYGEDO_RUN_AT` | Docker / 本地 CLI 每日固定执行时刻，24 小时制 `HH:MM`（上海时区），设置后优先于 `TAYGEDO_LOOP_SECONDS`；设置后进程常驻，首次执行失败不会退出 |
 | `TAYGEDO_UPSTASH_REDIS_REST_URL` | Upstash REST URL |
 | `TAYGEDO_UPSTASH_REDIS_REST_TOKEN` | Upstash REST Token |
 | `REDIS_URL` / `KV_URL` | `unstorage` 后端自动选择普通 Redis |

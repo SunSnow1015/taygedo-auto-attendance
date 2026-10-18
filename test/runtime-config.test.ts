@@ -90,6 +90,31 @@ describe('loadRuntimeConfig', () => {
     }))
   })
 
+  it('loads the daily run time from env', () => {
+    expect(loadRuntimeConfig({ TAYGEDO_RUN_AT: '9:30' })).toEqual(expect.objectContaining({
+      dailyAt: { hour: 9, minute: 30 },
+    }))
+    expect(loadRuntimeConfig({ TAYGEDO_RUN_AT: ' 09:30 ' })).toEqual(expect.objectContaining({
+      dailyAt: { hour: 9, minute: 30 },
+    }))
+    expect(loadRuntimeConfig({ TAYGEDO_RUN_AT: '00:00' })).toEqual(expect.objectContaining({
+      dailyAt: { hour: 0, minute: 0 },
+    }))
+    expect(loadRuntimeConfig({ TAYGEDO_RUN_AT: '23:59' })).toEqual(expect.objectContaining({
+      dailyAt: { hour: 23, minute: 59 },
+    }))
+    expect(loadRuntimeConfig({ TAYGEDO_RUN_AT: '' })).toEqual(expect.objectContaining({
+      dailyAt: undefined,
+    }))
+  })
+
+  it('rejects invalid daily run times', () => {
+    expect(() => loadRuntimeConfig({ TAYGEDO_RUN_AT: '24:00' })).toThrow('TAYGEDO_RUN_AT')
+    expect(() => loadRuntimeConfig({ TAYGEDO_RUN_AT: '9:60' })).toThrow('TAYGEDO_RUN_AT')
+    expect(() => loadRuntimeConfig({ TAYGEDO_RUN_AT: 'morning' })).toThrow('TAYGEDO_RUN_AT')
+    expect(() => loadRuntimeConfig({ TAYGEDO_RUN_AT: '9:3' })).toThrow('TAYGEDO_RUN_AT')
+  })
+
   it('loads the force run flag from env', () => {
     expect(loadRuntimeConfig({ TAYGEDO_FORCE_RUN: 'true' })).toEqual(expect.objectContaining({
       forceRun: true,
