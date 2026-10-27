@@ -1,17 +1,18 @@
 import { createHash, randomBytes } from 'node:crypto'
 
 export const TAYGEDO_BASE_URL = 'https://bbs-api.tajiduo.com'
-export const TAYGEDO_APP_VER = '1.2.2'
+export const TAYGEDO_APP_VER = '1.2.5'
 export const TAYGEDO_DS_SECRET = 'pUds3dfMkl'
 export const H5_ORIGIN = 'https://webstatic.tajiduo.com'
 
-const NATIVE_USER_AGENT = 'Tajiduo/1.2.2 (iPhone; iOS 17.0; Scale/3.00)'
+const NATIVE_USER_AGENT = 'okhttp/4.12.0'
 const H5_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Tajiduo/1.2.2'
 const NONCE_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 
 export interface MakeDsOptions {
   timestamp?: number
   nonce?: string
+  appVersion?: string
 }
 
 export interface ProtocolRequest {
@@ -33,6 +34,25 @@ export interface NativeRequestOptions {
   nonce?: () => string
 }
 
+interface UserCenterSessionRequestBaseOptions {
+  authorization: string
+  uid: string
+  deviceId: string
+  now?: () => Date
+  nonce?: () => string
+}
+
+export type UserCenterSessionRequestOptions = UserCenterSessionRequestBaseOptions & (
+  | {
+      path: '/usercenter/api/login'
+      body: Record<string, string | number | undefined>
+    }
+  | {
+      path: '/usercenter/api/refreshToken'
+      body?: never
+    }
+)
+
 export interface H5RequestOptions {
   accessToken: string
   method: 'GET' | 'POST'
@@ -44,8 +64,9 @@ export interface H5RequestOptions {
 export function makeDs(options: MakeDsOptions = {}): string {
   const timestamp = options.timestamp ?? Math.floor(Date.now() / 1000)
   const nonce = options.nonce ?? makeNonce()
+  const appVersion = options.appVersion ?? TAYGEDO_APP_VER
   const signature = createHash('md5')
-    .update(`${timestamp}${nonce}${TAYGEDO_APP_VER}${TAYGEDO_DS_SECRET}`, 'utf8')
+    .update(`${timestamp}${nonce}${appVersion}${TAYGEDO_DS_SECRET}`, 'utf8')
     .digest('hex')
   return `${timestamp},${nonce},${signature}`
 }
@@ -55,7 +76,7 @@ export function buildNativeRequest(options: NativeRequestOptions): ProtocolReque
     Accept: 'application/json',
     Authorization: options.accessToken,
     appversion: TAYGEDO_APP_VER,
-    platform: 'ios',
+    platform: 'android',
     uid: options.uid,
     deviceid: options.deviceId,
     ds: makeDs({
@@ -75,6 +96,32 @@ export function buildNativeRequest(options: NativeRequestOptions): ProtocolReque
     init: {
       method: options.method,
       headers,
+      ...(body ? { body } : {}),
+    },
+  }
+}
+
+export function buildUserCenterSessionRequest(options: UserCenterSessionRequestOptions): ProtocolRequest {
+  const body = options.body ? formEncode(options.body) : undefined
+  return {
+    url: buildUrl(options.path),
+    init: {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json, text/plain, */*',
+        Authorization: options.authorization,
+        appVersion: TAYGEDO_APP_VER,
+        platform: 'android',
+        uid: options.uid,
+        'debug-uid': '3',
+        deviceId: options.deviceId,
+        ds: makeDs({
+          timestamp: Math.floor((options.now?.() ?? new Date()).getTime() / 1000),
+          nonce: options.nonce?.(),
+        }),
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': NATIVE_USER_AGENT,
+      },
       ...(body ? { body } : {}),
     },
   }

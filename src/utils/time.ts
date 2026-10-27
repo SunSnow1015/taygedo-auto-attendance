@@ -1,3 +1,8 @@
+export interface DailySchedule {
+  hour: number
+  minute: number
+}
+
 export function shanghaiDateTime(date = new Date()): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai',

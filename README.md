@@ -12,7 +12,7 @@
 - 支持腾讯云 SCF / 阿里云 FC 定时云函数，使用 Upstash Redis REST 持久化账号和状态
 - 支持 Docker / Docker Compose 和本地 CLI
 - 支持短信验证码登录、账号密码登录
-- 支持 APP 签到、游戏签到和塔吉多金币任务
+- 支持 APP 签到、游戏签到、塔吉多金币任务和云异环每日时长
 - 支持普通 webhook 和 Server 酱通知
 
 ## 快速开始
@@ -28,14 +28,16 @@
 <details>
 <summary>展开查看详细步骤</summary>
 
-部署后配置环境变量：
+部署页面只需要填写以下两个 Secret。建议分别运行一次 `openssl rand -hex 32`，生成两段不同的随机字符串：
 
 ```text
-TAYGEDO_ADMIN_TOKEN=手动触发和登录接口使用的随机字符串
-TAYGEDO_CREDENTIAL_KEY=一段随机密钥
+TAYGEDO_ADMIN_TOKEN=第一段随机字符串
+TAYGEDO_CREDENTIAL_KEY=第二段随机字符串
 ```
 
 > 安全提醒：`TAYGEDO_CREDENTIAL_KEY` 必须使用高强度随机密钥，不要使用手机号、生日、短密码或常用短语。它只需要保存在 Cloudflare Secret 中供 Worker 解密账号密码使用，不需要自己记住；丢失后重新 password 登录生成新的加密密码即可。
+
+KV 命名空间会由 Cloudflare 自动创建和绑定。账号、通知地址、重试次数等可选配置不需要在首次部署时填写；账号可以在部署完成后通过 Worker 登录页写入 KV。
 
 可选：
 
@@ -53,7 +55,7 @@ Worker 使用绑定名为 `KV` 的 Cloudflare KV。可以从 `TAYGEDO_ACCOUNTS` 
 https://你的-worker.workers.dev/
 ```
 
-登录页仅 Cloudflare Worker 支持，用 `TAYGEDO_ADMIN_TOKEN` 授权。它只用于短信验证码登录或账号密码登录，并把生成的账号配置写入 KV。
+管理页仅 Cloudflare Worker 支持，用 `TAYGEDO_ADMIN_TOKEN` 授权；未配置该 Secret 时，`/login`、`/run` 和 `/status` 都会拒绝访问。密码登录可以直接提交；验证码登录会在同一页面先发送验证码，再自动复用设备信息完成登录，并把生成的账号配置写入 KV。页面下方还会显示最近一次签到结果和最近 30 次执行历史，并区分定时任务、手动运行和强制重跑。
 
 通过密码登录并写入 KV：
 
@@ -76,6 +78,14 @@ curl -H "Authorization: Bearer <TAYGEDO_ADMIN_TOKEN>" https://你的-worker.work
 ```bash
 curl -H "Authorization: Bearer <TAYGEDO_ADMIN_TOKEN>" "https://你的-worker.workers.dev/run?force=1"
 ```
+
+读取脱敏后的签到状态：
+
+```bash
+curl -H "Authorization: Bearer <TAYGEDO_ADMIN_TOKEN>" https://你的-worker.workers.dev/status
+```
+
+状态接口带有 `Cache-Control: no-store`，只返回签到统计、APP / 游戏签到明细和通知失败数量，不返回 access token、refresh token、密码、通知 URL 或 SendKey。Worker 会把这份脱敏状态保存在 KV 的 `<状态前缀>:worker-status`；默认 key 为 `taygedo:worker-status`。状态历史写入采用 best-effort，不会反过来把已完成的签到判为失败；读取时还会与 runner 的 `last-run` 比较完成时间，避免状态写入偶发失败后页面长期停留在旧结果。
 
 </details>
 
@@ -169,6 +179,7 @@ index.main_handler
 | `TAYGEDO_MAX_RETRIES` | 单账号最大重试次数，默认 `3` |
 | `TAYGEDO_ACCOUNT_CONCURRENCY` | 多账号并发数，默认 `1`，可设为 `2` 压缩多号耗时 |
 | `TAYGEDO_COIN_TASKS` | 是否执行金币任务，默认 `true` |
+| `TAYGEDO_CLOUD_DURATION` | 是否领取云异环每日时长，默认 `true` |
 | `TAYGEDO_SHARE_PLATFORM` | 分享平台，默认 `qq` |
 
 云函数版会强制使用 Upstash，不需要配置 `TAYGEDO_ACCOUNT_STORE` 和 `TAYGEDO_STATE_STORE`。
@@ -248,6 +259,7 @@ Settings -> Secrets and variables -> Actions -> New repository secret
 | `TAYGEDO_SERVERCHAN_SENDKEY` | Server 酱 SendKey | 可选 |
 | `TAYGEDO_MAX_RETRIES` | 单账号最大重试次数，默认 `3` | 可选 |
 | `TAYGEDO_ACCOUNT_CONCURRENCY` | 多账号并发数，默认 `1` | 可选 |
+| `TAYGEDO_CLOUD_DURATION` | 是否领取云异环每日时长，默认 `true` | 可选 |
 
 #### 5. 添加账号
 
@@ -279,13 +291,15 @@ account_name=主账号
 总账号：1，成功：1，失败：0
 ```
 
-之后 workflow 会按计划每天自动运行。
+之后 workflow 会按计划每天自动运行。定时运行时会自动调用 `liskin/gh-workflow-keepalive@v1`，防止仓库长期无活动导致 GitHub Actions 被停用，且不会产生额外的空提交。
 
 </details>
 
 ### Docker 部署
 
 适合已有服务器、NAS 或本地容器环境的用户。默认使用 GHCR 镜像，也可以本地构建。
+
+仓库中的 `.env.selfhost.example` 保留了 Docker、本地 CLI 和其他自托管方式可使用的完整环境变量示例；它不会被 Cloudflare 一键部署识别为必填 Secret。
 
 <details>
 <summary>展开查看详细步骤</summary>
@@ -307,6 +321,7 @@ TAYGEDO_MAX_RETRIES=3
 TAYGEDO_ACCOUNT_CONCURRENCY=1
 TAYGEDO_FORCE_RUN=false
 TAYGEDO_LOOP_SECONDS=
+TAYGEDO_RUN_AT=
 ```
 
 生成账号文件：
@@ -333,13 +348,23 @@ docker compose run --rm taygedo-attendance
 TAYGEDO_FORCE_RUN=true docker compose run --rm taygedo-attendance
 ```
 
-常驻循环模式：
+> 以上一次性命令同样会读取 `.env`。若 `.env` 中设置了 `TAYGEDO_RUN_AT` 或 `TAYGEDO_LOOP_SECONDS`，容器会进入常驻模式而不退出，请显式清空：`TAYGEDO_RUN_AT= TAYGEDO_LOOP_SECONDS= docker compose run --rm taygedo-attendance`。
+
+常驻定时模式：
+
+```bash
+TAYGEDO_RUN_AT=09:30 docker compose up -d
+```
+
+设置 `TAYGEDO_RUN_AT`（24 小时制 `HH:MM`，上海时区）后，容器启动会先立即执行一次，之后每日固定在该时刻执行，不再受启动时间影响；进程会一直常驻，请用 `docker compose up -d` 启动，并建议设置 `TAYGEDO_DOCKER_RESTART=always`，避免宿主机重启后定时任务静默停止。首次执行失败不会让进程退出，日志会记录失败原因并继续等待下一时刻；若首次执行耗时超过当天定时时刻，当天这一次会被跳过并在日志中提示。配合今日去重，当天已签到时重复触发不会重复执行；去重依赖持久化状态存储，请勿同时设置 `TAYGEDO_STATE_STORE=memory`。
+
+也仍支持按间隔秒数循环（首次执行结束后开始倒计时）：
 
 ```bash
 TAYGEDO_LOOP_SECONDS=86400 docker compose up -d
 ```
 
-设置后容器启动会立即执行一次，然后按秒循环。默认留空仍是一次性任务。
+两者同时设置时 `TAYGEDO_RUN_AT` 优先。默认留空仍是一次性任务，启动即执行一次后退出。
 
 本地构建镜像：
 
@@ -349,6 +374,112 @@ docker compose run --rm taygedo-attendance
 ```
 
 镜像 workflow 会推送 `linux/amd64` 和 `linux/arm64`。
+
+</details>
+
+### 青龙面板部署
+
+适合已经使用青龙面板管理定时任务的用户。青龙脚本复用本地 CLI，账号文件、加密密钥和每日去重状态默认保存在 `/ql/data/taygedo-auto-attendance`。
+
+<details>
+<summary>展开查看详细步骤</summary>
+
+#### 1. 拉取仓库
+
+在青龙面板的订阅管理中添加仓库，或进入青龙容器后手动拉取：
+
+```bash
+cd /ql/data/scripts
+git clone https://github.com/zzstar101/taygedo-auto-attendance.git
+cd taygedo-auto-attendance
+```
+
+`scripts/qinglong.sh` 顶部带有青龙可识别的任务名和定时注释：
+
+```bash
+# new Env('塔吉多自动签到')
+# cron: 15 1 * * *
+```
+
+拉库后青龙可以自动识别任务名和默认定时。青龙需要 Node.js 18 或更高版本。首次执行 `scripts/qinglong.sh` 时会自动安装项目依赖；如果青龙没有 `pnpm`，脚本会依次尝试 `corepack pnpm` 和 `npm install`。
+
+#### 2. 首次登录生成账号文件
+
+在青龙环境变量中添加：
+
+```text
+TAYGEDO_LOGIN_MODE=password
+TAYGEDO_LOGIN_PHONE=你的手机号
+TAYGEDO_LOGIN_PASSWORD=你的塔吉多密码
+TAYGEDO_LOGIN_ACCOUNT_ID=main
+TAYGEDO_LOGIN_ACCOUNT_NAME=主账号
+```
+
+然后在青龙任务中手动运行一次：
+
+```bash
+cd /ql/data/scripts/taygedo-auto-attendance && bash scripts/qinglong.sh login
+```
+
+脚本会生成：
+
+```text
+/ql/data/taygedo-auto-attendance/accounts.json
+/ql/data/taygedo-auto-attendance/credential-key
+```
+
+如果你已经有账号 JSON，也可以直接把它放进青龙环境变量 `TAYGEDO_ACCOUNTS`。脚本首次运行时会写入 `/ql/data/taygedo-auto-attendance/accounts.json`；如需强制覆盖已有账号文件，设置：
+
+```text
+TAYGEDO_ACCOUNTS_OVERWRITE=true
+```
+
+#### 3. 添加定时签到任务
+
+青龙定时任务命令：
+
+```bash
+cd /ql/data/scripts/taygedo-auto-attendance && bash scripts/qinglong.sh
+```
+
+建议定时规则设置为每天北京时间凌晨后执行一次，例如：
+
+```text
+15 1 * * *
+```
+
+强制忽略今日去重并重跑：
+
+```bash
+cd /ql/data/scripts/taygedo-auto-attendance && TAYGEDO_FORCE_RUN=true bash scripts/qinglong.sh
+```
+
+脚本也支持把参数继续传给本地 CLI，例如只打印当前账号文件中的设备信息：
+
+```bash
+cd /ql/data/scripts/taygedo-auto-attendance && bash scripts/qinglong.sh device --print
+```
+
+#### 4. 可选配置
+
+```text
+TAYGEDO_SERVERCHAN_SENDKEY=SCTxxxxxxxxxxxxxxxxxxxxxxxx
+TAYGEDO_NOTIFICATION_URLS=https://example.com/webhook
+TAYGEDO_MAX_RETRIES=3
+TAYGEDO_ACCOUNT_CONCURRENCY=1
+TAYGEDO_COIN_TASKS=true
+TAYGEDO_CLOUD_DURATION=true
+TAYGEDO_SHARE_PLATFORM=qq
+```
+
+如果不想使用默认数据目录，可以指定：
+
+```text
+TAYGEDO_DATA_DIR=/ql/data/taygedo-auto-attendance
+TAYGEDO_ACCOUNTS_FILE=/ql/data/taygedo-auto-attendance/accounts.json
+TAYGEDO_STATE_DIR=/ql/data/taygedo-auto-attendance/state
+TAYGEDO_CREDENTIAL_KEY_PATH=/ql/data/taygedo-auto-attendance/credential-key
+```
 
 </details>
 
@@ -489,6 +620,16 @@ account_name=主账号
 
 如果只追求签到速度，关闭金币任务最快；如果保留金币任务，多账号场景可把 `TAYGEDO_ACCOUNT_CONCURRENCY` 设为 `2` 先试运行。
 
+### 云异环时长
+
+每日签到默认会尝试调用云异环 `getUserInfo` 接口，触发每日首次登录赠送时长，并在通知摘要里显示本次赠送分钟和剩余分钟。此功能优先复用账号 JSON 中的 `laohuToken` / `laohuUserId`；缺少 token 但有手机号和可用密码时，会先密码登录拿老虎 token 并写回账号配置。
+
+| 配置 | 说明 |
+| --- | --- |
+| `TAYGEDO_CLOUD_DURATION` | 是否领取云异环每日时长，默认 `true`，设为 `false` 可关闭 |
+
+如果账号配置缺少 `laohuToken` / `laohuUserId`，且也没有可用于登录的密码，该账号的云异环任务会跳过，不影响 APP 签到、游戏签到和金币任务。
+
 ### 多账号
 
 重复运行登录流程，换一个 `account_id` 即可：
@@ -526,7 +667,8 @@ TAYGEDO_SERVERCHAN_SENDKEY=SCTxxxxxxxxxxxxxxxxxxxxxxxx
 | `TAYGEDO_STATE_PREFIX` | 状态存储前缀，默认 `taygedo` |
 | `TAYGEDO_ACCOUNT_CONCURRENCY` | 多账号并发数，默认 `1` |
 | `TAYGEDO_FORCE_RUN` | 忽略今日去重强制重跑，支持 `true` / `1` |
-| `TAYGEDO_LOOP_SECONDS` | Docker / 本地 CLI 常驻循环间隔秒数，留空表示执行一次 |
+| `TAYGEDO_LOOP_SECONDS` | Docker / 本地 CLI 常驻循环间隔秒数，留空表示执行一次（首次执行结束后开始倒计时） |
+| `TAYGEDO_RUN_AT` | Docker / 本地 CLI 每日固定执行时刻，24 小时制 `HH:MM`（上海时区），设置后优先于 `TAYGEDO_LOOP_SECONDS`；设置后进程常驻，首次执行失败不会退出 |
 | `TAYGEDO_UPSTASH_REDIS_REST_URL` | Upstash REST URL |
 | `TAYGEDO_UPSTASH_REDIS_REST_TOKEN` | Upstash REST Token |
 | `REDIS_URL` / `KV_URL` | `unstorage` 后端自动选择普通 Redis |
@@ -553,7 +695,7 @@ Cloudflare Workers 默认使用 KV；Docker 和本地 CLI 默认使用文件存�
 - 本项目仅用于学习和研究目的。
 - 请勿频繁调用接口，以免影响账号安全。
 - 请不要把密码、token、加密密钥、账号 JSON 发到 issue、README、公开日志或聊天截图里。
-- GitHub Actions 免费额度通常够用；如果仓库长期无活动，GitHub 可能会停用定时 workflow，可手动触发或提交新 commit 恢复。
+- GitHub Actions 免费额度通常够用；GitHub 可能会停用长期无活动仓库的定时 workflow，本项目会在定时签到时通过 `liskin/gh-workflow-keepalive@v1` 自动保活，避免额外空提交。
 
 ## 致谢
 

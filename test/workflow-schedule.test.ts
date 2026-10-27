@@ -29,13 +29,14 @@ describe('scheduled attendance time', () => {
     expect(dockerWorkflow).toContain("if: github.repository == 'zzstar101/taygedo-auto-attendance'")
   })
 
-  it('keeps scheduled workflows active in downstream forks only', () => {
-    const workflow = readFileSync('.github/workflows/keepalive.yml', 'utf8')
+  it('keeps scheduled workflows active without empty commits', () => {
+    const workflow = readFileSync('.github/workflows/attendance.yml', 'utf8')
 
-    expect(workflow).toContain("cron: '0 0 1,15 * *'")
-    expect(workflow).toContain("if: github.repository != 'zzstar101/taygedo-auto-attendance'")
-    expect(workflow).toContain('contents: write')
-    expect(workflow).toContain('run: |\n          git commit --allow-empty -m "chore: keep workflows active [skip ci]"')
-    expect(workflow).toContain('run: |\n          git push origin HEAD:main')
+    expect(workflow).toContain('workflow-keepalive:')
+    expect(workflow).toContain("if: github.event_name == 'schedule'")
+    expect(workflow).toContain('actions: write')
+    expect(workflow).toContain('uses: liskin/gh-workflow-keepalive@v1')
+    expect(workflow).not.toContain('git commit --allow-empty')
+    expect(workflow).not.toContain('git push')
   })
 })

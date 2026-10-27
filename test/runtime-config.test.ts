@@ -24,6 +24,7 @@ describe('loadRuntimeConfig', () => {
       accountPasswords: {},
       forceRun: false,
       coinTasks: true,
+      cloudDuration: true,
       sharePlatform: 'qq',
       loopSeconds: undefined,
     }))
@@ -46,6 +47,7 @@ describe('loadRuntimeConfig', () => {
       TAYGEDO_LOGIN_PASSWORD: '',
       TAYGEDO_CREDENTIAL_KEY: '',
       TAYGEDO_COIN_TASKS: '',
+      TAYGEDO_CLOUD_DURATION: '',
       TAYGEDO_SHARE_PLATFORM: '',
       TAYGEDO_LOOP_SECONDS: '',
       TAYGEDO_UPSTASH_REDIS_REST_URL: '',
@@ -56,6 +58,7 @@ describe('loadRuntimeConfig', () => {
       accountPasswords: {},
       credentialKey: undefined,
       coinTasks: true,
+      cloudDuration: true,
       sharePlatform: 'qq',
       loopSeconds: undefined,
       upstashUrl: undefined,
@@ -63,12 +66,14 @@ describe('loadRuntimeConfig', () => {
     }))
   })
 
-  it('loads coin task options from env', () => {
+  it('loads coin task and cloud duration options from env', () => {
     expect(loadRuntimeConfig({
       TAYGEDO_COIN_TASKS: 'false',
+      TAYGEDO_CLOUD_DURATION: 'false',
       TAYGEDO_SHARE_PLATFORM: 'wb',
     })).toEqual(expect.objectContaining({
       coinTasks: false,
+      cloudDuration: false,
       sharePlatform: 'wb',
     }))
   })
@@ -83,6 +88,31 @@ describe('loadRuntimeConfig', () => {
     expect(loadRuntimeConfig({ TAYGEDO_LOOP_SECONDS: '86400' })).toEqual(expect.objectContaining({
       loopSeconds: 86400,
     }))
+  })
+
+  it('loads the daily run time from env', () => {
+    expect(loadRuntimeConfig({ TAYGEDO_RUN_AT: '9:30' })).toEqual(expect.objectContaining({
+      dailyAt: { hour: 9, minute: 30 },
+    }))
+    expect(loadRuntimeConfig({ TAYGEDO_RUN_AT: ' 09:30 ' })).toEqual(expect.objectContaining({
+      dailyAt: { hour: 9, minute: 30 },
+    }))
+    expect(loadRuntimeConfig({ TAYGEDO_RUN_AT: '00:00' })).toEqual(expect.objectContaining({
+      dailyAt: { hour: 0, minute: 0 },
+    }))
+    expect(loadRuntimeConfig({ TAYGEDO_RUN_AT: '23:59' })).toEqual(expect.objectContaining({
+      dailyAt: { hour: 23, minute: 59 },
+    }))
+    expect(loadRuntimeConfig({ TAYGEDO_RUN_AT: '' })).toEqual(expect.objectContaining({
+      dailyAt: undefined,
+    }))
+  })
+
+  it('rejects invalid daily run times', () => {
+    expect(() => loadRuntimeConfig({ TAYGEDO_RUN_AT: '24:00' })).toThrow('TAYGEDO_RUN_AT')
+    expect(() => loadRuntimeConfig({ TAYGEDO_RUN_AT: '9:60' })).toThrow('TAYGEDO_RUN_AT')
+    expect(() => loadRuntimeConfig({ TAYGEDO_RUN_AT: 'morning' })).toThrow('TAYGEDO_RUN_AT')
+    expect(() => loadRuntimeConfig({ TAYGEDO_RUN_AT: '9:3' })).toThrow('TAYGEDO_RUN_AT')
   })
 
   it('loads the force run flag from env', () => {

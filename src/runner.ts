@@ -20,6 +20,7 @@ export interface RunnerDependencies {
   stateStore?: StateStore
   forceRun?: boolean
   coinTasks?: boolean
+  cloudDuration?: boolean
   sharePlatform?: string
   delay?: (ms: number) => Promise<void>
   now?: Date
@@ -37,6 +38,7 @@ type AttendanceApi = Pick<TaygedoApi, 'refreshToken' | 'getGameRoles' | 'appSign
     | 'likePost'
     | 'sharePost'
     | 'getUserCoinTaskState'
+    | 'cloudGetUserInfo'
   >>
 
 export interface RunAttendanceResult {
@@ -93,6 +95,15 @@ export interface AccountRunSummary {
     success: boolean
   }>
   coinTasks?: CoinTaskSummary
+  cloudDuration?: CloudDurationSummary
+  error?: string
+  skippedReason?: string
+}
+
+export interface CloudDurationSummary {
+  status: 'success' | 'skipped' | 'failed'
+  gave?: number
+  remained?: number
   error?: string
   skippedReason?: string
 }
@@ -130,6 +141,7 @@ export async function runAttendance(deps: RunnerDependencies): Promise<RunAttend
       const accountRun = await withRetries(async () => {
         return await runAccount(api, account, deps.accountPasswords ?? {}, deps.credentialKey, {
           coinTasks: deps.coinTasks ?? true,
+          cloudDuration: deps.cloudDuration ?? true,
           sharePlatform: deps.sharePlatform ?? 'qq',
           delay: deps.delay ?? sleep,
         })
@@ -235,6 +247,7 @@ async function runAccount(
 
 interface AccountRunOptions {
   coinTasks?: boolean
+  cloudDuration?: boolean
   sharePlatform?: string
   delay?: (ms: number) => Promise<void>
 }
@@ -248,7 +261,10 @@ async function refreshOrRebuildSession(
   const password = resolveAccountPassword(account, accountPasswords, credentialKey)
   if (account.phone && password && api.loginWithPassword && api.userCenterLogin) {
     try {
-      const login = await api.loginWithPassword(account.phone, password, account.deviceId)
+      const login = await api.loginWithPassword(account.phone, password, account.deviceId, {
+        openudid: account.openudid,
+        vendorid: account.vendorid,
+      })
       const rebuilt = await api.userCenterLogin(login.token, login.userId, account.deviceId)
       const updatedAccount = withSession(account, {
         accessToken: rebuilt.accessToken,
@@ -268,7 +284,7 @@ async function refreshOrRebuildSession(
   }
 
   try {
-    const refreshed = await api.refreshToken(account.refreshToken, account.deviceId)
+    const refreshed = await api.refreshToken(account.refreshToken, account.deviceId, account.uid)
     const updatedAccount = withSession(account, {
       accessToken: refreshed.accessToken,
       refreshToken: refreshed.refreshToken,
@@ -316,6 +332,8 @@ async function signWithSession(
   api: Pick<TaygedoApi, 'getGameRoles' | 'appSignin' | 'getSigninState' | 'getSigninRewards' | 'gameSignin'>,
   account: TaygedoAccount,
   accessToken: string,
+  accountPasswords: Record<string, string>,
+  credentialKey: string | undefined,
   shouldUpdateSecret: boolean,
   options: AccountRunOptions = {},
 ): Promise<AccountRunResult> {
@@ -352,10 +370,16 @@ async function signWithSession(
   const coinTasks = options.coinTasks === false
     ? undefined
     : await runCoinTasks(api as AttendanceApi, account, accessToken, options)
+  const cloudDurationResult = options.cloudDuration === false
+    ? undefined
+    : await runCloudDuration(api as AttendanceApi, updatedAccount, accountPasswords, credentialKey)
+  if (cloudDurationResult?.updatedAccount) {
+    Object.assign(updatedAccount, cloudDurationResult.updatedAccount)
+  }
 
   return {
     updatedAccount,
-    shouldUpdateSecret,
+    shouldUpdateSecret: shouldUpdateSecret || Boolean(cloudDurationResult?.shouldUpdateSecret),
     summary: {
       id: account.id,
       name: account.name,
@@ -364,6 +388,7 @@ async function signWithSession(
       appSignin,
       gameSignins,
       ...(coinTasks ? { coinTasks } : {}),
+      ...(cloudDurationResult ? { cloudDuration: cloudDurationResult.summary } : {}),
     },
   }
 }
@@ -416,14 +441,14 @@ async function signWithRecoverableSession(
   options: AccountRunOptions = {},
 ): Promise<AccountRunResult> {
   try {
-    return await signWithSession(api, account, accessToken, shouldUpdateSecret, options)
+    return await signWithSession(api, account, accessToken, accountPasswords, credentialKey, shouldUpdateSecret, options)
   }
   catch (error) {
     if (!isAuthError(error)) {
       throw error
     }
     const session = await refreshOrRebuildSession(api, account, accountPasswords, credentialKey)
-    return await signWithSession(api, session.account, session.accessToken, true, options)
+    return await signWithSession(api, session.account, session.accessToken, accountPasswords, credentialKey, true, options)
   }
 }
 
@@ -527,6 +552,84 @@ async function runCoinTasks(
     summary.error = errors.join('；')
   }
   return summary
+}
+
+async function runCloudDuration(
+  api: AttendanceApi,
+  account: TaygedoAccount,
+  accountPasswords: Record<string, string>,
+  credentialKey: string | undefined,
+): Promise<{ summary: CloudDurationSummary, updatedAccount?: TaygedoAccount, shouldUpdateSecret?: boolean } | undefined> {
+  if (!api.cloudGetUserInfo) {
+    return undefined
+  }
+  let laohuToken = account.laohuToken
+  let laohuUserId = account.laohuUserId
+  let updatedAccount: TaygedoAccount | undefined
+
+  if (!laohuToken || !laohuUserId) {
+    const password = resolveAccountPassword(account, accountPasswords, credentialKey)
+    if (!account.phone || !password || !api.loginWithPassword) {
+      return {
+        summary: {
+          status: 'skipped',
+          skippedReason: '账号缺少 laohuToken/laohuUserId',
+        },
+      }
+    }
+    try {
+      const login = await api.loginWithPassword(account.phone, password, account.deviceId, {
+        openudid: account.openudid,
+        vendorid: account.vendorid,
+      })
+      laohuToken = login.token
+      laohuUserId = login.userId
+      updatedAccount = {
+        ...account,
+        laohuToken,
+        laohuUserId,
+        tokenUpdatedAt: shanghaiDateTime(),
+      }
+    }
+    catch (error) {
+      return {
+        summary: {
+          status: 'failed',
+          error: `老虎登录失败：${errorMessage(error)}`,
+        },
+      }
+    }
+  }
+
+  if (!laohuToken || !laohuUserId) {
+    return {
+      summary: {
+      status: 'skipped',
+      skippedReason: '账号缺少 laohuToken/laohuUserId',
+      },
+    }
+  }
+
+  try {
+    const result = await api.cloudGetUserInfo(laohuToken, laohuUserId, account.deviceId)
+    return {
+      summary: {
+        status: 'success',
+        gave: result.gave,
+        ...(result.remained === undefined ? {} : { remained: result.remained }),
+      },
+      ...(updatedAccount ? { updatedAccount, shouldUpdateSecret: true } : {}),
+    }
+  }
+  catch (error) {
+    return {
+      summary: {
+        status: 'failed',
+        error: errorMessage(error),
+      },
+      ...(updatedAccount ? { updatedAccount, shouldUpdateSecret: true } : {}),
+    }
+  }
 }
 
 function errorMessage(error: unknown): string {
@@ -684,6 +787,9 @@ function buildSummary(accounts: AccountRunSummary[]): string {
     if (account.coinTasks) {
       lines.push(`- ${formatCoinTasks(account.coinTasks)}`)
     }
+    if (account.cloudDuration) {
+      lines.push(`- ${formatCloudDuration(account.cloudDuration)}`)
+    }
     if (account.error) {
       lines.push(`- 失败原因：${account.error}`)
     }
@@ -694,6 +800,20 @@ function buildSummary(accounts: AccountRunSummary[]): string {
   }
 
   return lines.join('\n').trim()
+}
+
+function formatCloudDuration(cloudDuration: CloudDurationSummary): string {
+  if (cloudDuration.status === 'skipped') {
+    return `云异环时长：跳过（${cloudDuration.skippedReason ?? '未执行'}）`
+  }
+  if (cloudDuration.status === 'failed') {
+    return `云异环时长：失败（${cloudDuration.error ?? '未知错误'}）`
+  }
+  const gave = cloudDuration.gave ?? 0
+  const remained = cloudDuration.remained === undefined ? '' : `，剩余 ${cloudDuration.remained} 分钟`
+  return gave > 0
+    ? `云异环时长：+${gave} 分钟${remained}`
+    : `云异环时长：今日已领${remained}`
 }
 
 function formatCoinTasks(coinTasks: CoinTaskSummary): string {

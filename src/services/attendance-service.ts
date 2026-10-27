@@ -14,6 +14,7 @@ export interface AttendanceServiceOptions {
   accountConcurrency?: number
   forceRun?: boolean
   coinTasks?: boolean
+  cloudDuration?: boolean
   sharePlatform?: string
 }
 
@@ -33,6 +34,7 @@ export class AttendanceService {
       stateStore: this.options.stateStore,
       forceRun: this.options.forceRun,
       coinTasks: this.options.coinTasks,
+      cloudDuration: this.options.cloudDuration,
       sharePlatform: this.options.sharePlatform,
       secretWriter: payload => this.options.accountStore.writeAccounts(payload),
     })

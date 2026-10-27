@@ -2,7 +2,7 @@ services:
   taygedo-attendance:
     image: ghcr.io/zzstar101/taygedo-auto-attendance:latest
     container_name: taygedo-attendance
-    restart: ${TAYGEDO_DOCKER_RESTART:-"no"}
+    restart: ${TAYGEDO_DOCKER_RESTART:-no}
     environment:
       TAYGEDO_NOTIFICATION_URLS: ${TAYGEDO_NOTIFICATION_URLS:-}
       TAYGEDO_SERVERCHAN_SENDKEY: ${TAYGEDO_SERVERCHAN_SENDKEY:-}
@@ -17,6 +17,7 @@ services:
       TAYGEDO_COIN_TASKS: ${TAYGEDO_COIN_TASKS:-true}
       TAYGEDO_SHARE_PLATFORM: ${TAYGEDO_SHARE_PLATFORM:-qq}
       TAYGEDO_LOOP_SECONDS: ${TAYGEDO_LOOP_SECONDS:-}
+      TAYGEDO_RUN_AT: ${TAYGEDO_RUN_AT:-}
       TAYGEDO_UPSTASH_REDIS_REST_URL: ${TAYGEDO_UPSTASH_REDIS_REST_URL:-}
       TAYGEDO_UPSTASH_REDIS_REST_TOKEN: ${TAYGEDO_UPSTASH_REDIS_REST_TOKEN:-}
       REDIS_URL: ${REDIS_URL:-}

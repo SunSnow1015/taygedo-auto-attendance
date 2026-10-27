@@ -1,3 +1,5 @@
+import type { DailySchedule } from '../utils/time.js'
+
 export type AccountStoreKind = 'env' | 'file' | 'cloudflare-kv' | 'upstash' | 'unstorage'
 export type StateStoreKind = 'memory' | 'file' | 'cloudflare-kv' | 'upstash' | 'unstorage'
 
@@ -16,8 +18,10 @@ export interface RuntimeConfig {
   statePrefix: string
   forceRun: boolean
   coinTasks: boolean
+  cloudDuration: boolean
   sharePlatform: string
   loopSeconds?: number
+  dailyAt?: DailySchedule
   adminToken?: string
   upstashUrl?: string
   upstashToken?: string
@@ -42,8 +46,10 @@ export function loadRuntimeConfig(env: Record<string, string | undefined>): Runt
     statePrefix: optionalEnv(env, 'TAYGEDO_STATE_PREFIX') ?? 'taygedo',
     forceRun: parseBoolean(optionalEnv(env, 'TAYGEDO_FORCE_RUN')),
     coinTasks: parseBoolean(optionalEnv(env, 'TAYGEDO_COIN_TASKS') ?? 'true'),
+    cloudDuration: parseBoolean(optionalEnv(env, 'TAYGEDO_CLOUD_DURATION') ?? 'true'),
     sharePlatform: optionalEnv(env, 'TAYGEDO_SHARE_PLATFORM') ?? 'qq',
     loopSeconds: parseOptionalPositiveInteger(optionalEnv(env, 'TAYGEDO_LOOP_SECONDS'), 'TAYGEDO_LOOP_SECONDS'),
+    dailyAt: parseDailySchedule(optionalEnv(env, 'TAYGEDO_RUN_AT')),
     adminToken: optionalEnv(env, 'TAYGEDO_ADMIN_TOKEN'),
     upstashUrl: optionalEnv(env, 'TAYGEDO_UPSTASH_REDIS_REST_URL') ?? optionalEnv(env, 'UPSTASH_REDIS_REST_URL'),
     upstashToken: optionalEnv(env, 'TAYGEDO_UPSTASH_REDIS_REST_TOKEN') ?? optionalEnv(env, 'UPSTASH_REDIS_REST_TOKEN'),
@@ -76,6 +82,23 @@ function parseAccountPasswords(env: Record<string, string | undefined>): Record<
   }
 
   return passwords
+}
+
+export function parseDailySchedule(value: string | undefined): DailySchedule | undefined {
+  const trimmed = value?.trim()
+  if (!trimmed) {
+    return undefined
+  }
+  const match = /^(\d{1,2}):(\d{2})$/.exec(trimmed)
+  if (!match) {
+    throw new Error('TAYGEDO_RUN_AT 必须是 HH:MM 格式（24 小时制），例如 09:30')
+  }
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+  if (hour > 23 || minute > 59) {
+    throw new Error('TAYGEDO_RUN_AT 必须是有效的 24 小时制时间，例如 09:30')
+  }
+  return { hour, minute }
 }
 
 export function splitComma(value: string | undefined): string[] {

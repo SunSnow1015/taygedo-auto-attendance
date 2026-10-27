@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ensureAccountDevice, generateDeviceIdentity } from '../src/taygedo/device.js'
 
 describe('device identity helpers', () => {
-  it('generates a 32-hex device id and uppercase UUID fields', () => {
+  it('generates a stable random device id and uppercase UUID fields', () => {
     const identity = generateDeviceIdentity()
 
     expect(identity.deviceId).toMatch(/^[a-f0-9]{32}$/)

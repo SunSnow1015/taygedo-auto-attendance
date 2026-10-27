@@ -57,6 +57,7 @@ export async function runScheduledCloudFunction(options: CloudFunctionOptions = 
     accountConcurrency: config.accountConcurrency,
     forceRun: config.forceRun,
     coinTasks: config.coinTasks,
+    cloudDuration: config.cloudDuration,
     sharePlatform: config.sharePlatform,
   })
   const result = await service.run()
